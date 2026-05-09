@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const genAI = new GoogleGenerativeAI('AIzaSyCSShz7_M2apBeTN641Yg9der-QahL_Qm4')
+const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_KEY)
 export const extractJobDetails = async (jobDescription) => {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
   const prompt = `
