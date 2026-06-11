@@ -15,7 +15,7 @@ function App() {
   const [authMode, setAuthMode] = useState('login')
   const [editingId, setEditingId] = useState(null)
   const [aiLoading, setAiLoading] = useState(false)
-
+  const [searchTerm, setSearchTerm] = useState('')
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => setSession(session))
@@ -97,7 +97,9 @@ const handleExtractWithAI = async () => {
     }
     return styles[s] || styles.Applied
   }
-
+ const filtered = applications.filter((app) =>
+  app.company.toLowerCase().includes(searchTerm.toLowerCase())
+)
   const stats = {
     total: applications.length,
     interviewing: applications.filter(a => a.status === 'Interviewing').length,
@@ -220,7 +222,7 @@ const handleExtractWithAI = async () => {
         <footer className="bg-slate-900 text-slate-400 py-8">
           <div className="max-w-7xl mx-auto px-6 text-center">
             <p className="text-sm">
-              Built by <span className="text-white font-medium">[YOUR NAME]</span>
+              Built by <span className="text-white font-medium">[Gopichand Jetti]</span>
             </p>
           </div>
         </footer>
@@ -356,11 +358,19 @@ const handleExtractWithAI = async () => {
 
           <div className="lg:col-span-2">
             <div className="bg-white rounded-lg border border-slate-200">
-              <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-                <h2 className="text-lg font-semibold text-slate-900">Your Applications</h2>
-                <span className="text-sm text-slate-500">{applications.length} total</span>
-              </div>
-              {loading ? (
+<div className="px-6 py-4 border-b border-slate-200">
+  <div className="flex justify-between items-center mb-3">
+    <h2 className="text-lg font-semibold text-slate-900">Your Applications</h2>
+    <span className="text-sm text-slate-500">{filtered.length} total</span>
+  </div>
+  <input
+    type="text"
+    placeholder="Search by company..."
+    value={searchTerm}
+    onChange={(e) => setSearchTerm(e.target.value)}
+    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+  />
+</div>              {loading ? (
                 <div className="p-8 text-center text-slate-500">Loading...</div>
               ) : applications.length === 0 ? (
                 <div className="p-12 text-center">
@@ -370,7 +380,7 @@ const handleExtractWithAI = async () => {
                 </div>
               ) : (
                 <ul className="divide-y divide-slate-200">
-                  {applications.map((app) => (
+                 {filtered.map((app) => (
                     <li key={app.id} className="p-5 hover:bg-slate-50 transition flex justify-between items-start">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-1">
@@ -400,6 +410,9 @@ const handleExtractWithAI = async () => {
                         </div>
                         <p className="text-slate-600 text-sm">{app.role}</p>
                         <p className="text-slate-400 text-xs mt-1">Added {new Date(app.date_added).toLocaleDateString()}</p>
+                        {Math.floor((new Date() - new Date(app.date_added)) / (1000 * 60 * 60 * 24)) >= 7 && app.status === 'Applied' && (
+  <p className="text-amber-600 text-xs mt-1 font-medium">⚠️ No update in {Math.floor((new Date() - new Date(app.date_added)) / (1000 * 60 * 60 * 24))} days. Consider following up.</p>
+)}
                         {app.notes && (
                           <p className="text-slate-500 text-sm mt-2 line-clamp-2 bg-slate-50 p-2 rounded">{app.notes}</p>
                         )}
@@ -422,7 +435,7 @@ const handleExtractWithAI = async () => {
 
       <footer className="mt-16 py-6 border-t border-slate-200 bg-white">
         <div className="max-w-7xl mx-auto px-6 text-center text-sm text-slate-500">
-          Built by <span className="text-slate-700 font-medium">[YOUR NAME]</span>
+          Built by <span className="text-slate-700 font-medium">[Gopichand Jetti]</span>
         </div>
       </footer>
     </div>
