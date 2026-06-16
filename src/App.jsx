@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react'
+
+
+    import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import { Briefcase, LogOut, Plus, Trash2, TrendingUp, CheckCircle2, Clock, XCircle, Target, Zap, BarChart3 } from 'lucide-react'
-import { extractJobDetails } from './gemini'
+import { extractJobDetails, analyzeResume } from "./gemini"
+
 function App() {
   const [session, setSession] = useState(null)
   const [applications, setApplications] = useState([])
@@ -14,8 +17,17 @@ function App() {
   const [authPassword, setAuthPassword] = useState('')
   const [authMode, setAuthMode] = useState('login')
   const [editingId, setEditingId] = useState(null)
+  const [resumeText, setResumeText] = useState('')
+  const [resumeFileName, setResumeFileName] = useState('')
+  const [analyzing, setAnalyzing] = useState(false)
+  const [analysisResult, setAnalysisResult] = useState(null)
+  const [analyzingId, setAnalyzingId] = useState(null)
+  const [quickJD, setQuickJD] = useState('')
+  const [quickResult, setQuickResult] = useState(null)
+  const [quickAnalyzing, setQuickAnalyzing] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => setSession(session))
@@ -48,20 +60,70 @@ function App() {
   }
 
   const handleLogout = async () => await supabase.auth.signOut()
-const handleExtractWithAI = async () => {
-  if (!notes) return alert('Please paste a job description in the notes field first')
-  
-  setAiLoading(true)
-  try {
-    const result = await extractJobDetails(notes)
-    setCompany(result.company)
-    setRole(result.role)
-  } catch (error) {
-    alert('AI extraction failed. Please check your API key or try again.')
-    console.error(error)
+
+  const handleResumeUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setResumeFileName(file.name)
+    const pdfjsLib = await import('pdfjs-dist')
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js'
+    const arrayBuffer = await file.arrayBuffer()
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+    let fullText = ''
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i)
+      const content = await page.getTextContent()
+      const pageText = content.items.map(item => item.str).join(' ')
+      fullText += pageText + '\n'
+    }
+    setResumeText(fullText)
+    alert('Resume uploaded successfully!')
   }
-  setAiLoading(false)
-}
+
+  const handleQuickAnalyze = async () => {
+    if (!resumeText) return alert('Please upload your resume first')
+    if (!quickJD) return alert('Please paste a job description first')
+    setQuickAnalyzing(true)
+    setQuickResult(null)
+    try {
+      const result = await analyzeResume(resumeText, quickJD)
+      setQuickResult(result)
+    } catch (error) {
+      alert('Analysis failed. Please try again.')
+      console.error(error)
+    }
+    setQuickAnalyzing(false)
+  }
+
+  const handleAnalyzeResume = async (app) => {
+    if (!resumeText) return alert('Please upload your resume first')
+    if (!app.notes) return alert('Please add a job description in the notes field first')
+    setAnalyzing(true)
+    setAnalyzingId(app.id)
+    try {
+      const result = await analyzeResume(resumeText, app.notes)
+      setAnalysisResult(result)
+    } catch (error) {
+      alert('Analysis failed. Please try again.')
+      console.error(error)
+    }
+    setAnalyzing(false)
+  }
+
+  const handleExtractWithAI = async () => {
+    if (!notes) return alert('Please paste a job description in the notes field first')
+    setAiLoading(true)
+    try {
+      const result = await extractJobDetails(notes)
+      setCompany(result.company)
+      setRole(result.role)
+    } catch (error) {
+      alert('AI extraction failed. Please try again.')
+      console.error(error)
+    }
+    setAiLoading(false)
+  }
+
   const handleAddApplication = async () => {
     if (!company || !role) return alert('Please fill in company and role')
     const { data, error } = await supabase.from('applications').insert([{ company, role, status, notes, user_id: session.user.id }]).select()
@@ -97,9 +159,11 @@ const handleExtractWithAI = async () => {
     }
     return styles[s] || styles.Applied
   }
- const filtered = applications.filter((app) =>
-  app.company.toLowerCase().includes(searchTerm.toLowerCase())
-)
+
+  const filtered = applications.filter((app) =>
+    app.company.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
   const stats = {
     total: applications.length,
     interviewing: applications.filter(a => a.status === 'Interviewing').length,
@@ -138,7 +202,7 @@ const handleExtractWithAI = async () => {
               </div>
               <div className="flex items-center gap-2 text-sm text-slate-700">
                 <CheckCircle2 size={18} className="text-green-600" />
-                <span>Built for job seekers</span>
+                <span>AI powered</span>
               </div>
             </div>
           </div>
@@ -199,21 +263,21 @@ const handleExtractWithAI = async () => {
                   <Target className="text-blue-700" size={24} />
                 </div>
                 <h3 className="text-lg font-semibold text-slate-900 mb-2">Stay Organized</h3>
-                <p className="text-slate-600 text-sm">Track every application in one place. No more lost spreadsheets or forgotten follow-ups.</p>
+                <p className="text-slate-600 text-sm">Track every application in one place. No more forgotten follow-ups.</p>
               </div>
               <div className="text-center">
                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-4">
                   <BarChart3 className="text-green-700" size={24} />
                 </div>
                 <h3 className="text-lg font-semibold text-slate-900 mb-2">See Your Progress</h3>
-                <p className="text-slate-600 text-sm">Visual stats show your interviews, offers, and application count at a glance.</p>
+                <p className="text-slate-600 text-sm">Visual stats show your interviews, offers, and application count.</p>
               </div>
               <div className="text-center">
                 <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-4">
                   <Zap className="text-purple-700" size={24} />
                 </div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">Update Instantly</h3>
-                <p className="text-slate-600 text-sm">Click any status badge to update it. Watch your dashboard reflect changes in real time.</p>
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">AI Resume Analyzer</h3>
+                <p className="text-slate-600 text-sm">Upload your resume and get ATS match score, missing skills, and suggestions instantly.</p>
               </div>
             </div>
           </div>
@@ -221,9 +285,7 @@ const handleExtractWithAI = async () => {
 
         <footer className="bg-slate-900 text-slate-400 py-8">
           <div className="max-w-7xl mx-auto px-6 text-center">
-            <p className="text-sm">
-              Built by <span className="text-white font-medium">[Gopichand Jetti]</span>
-            </p>
+            <p className="text-sm">Built by <span className="text-white font-medium">Gopichand Jetti</span></p>
           </div>
         </footer>
       </div>
@@ -252,9 +314,34 @@ const handleExtractWithAI = async () => {
       </nav>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 mb-1">Dashboard</h1>
-          <p className="text-slate-600">Track and manage all your job applications in one place.</p>
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 mb-1">Dashboard</h1>
+            <p className="text-slate-600">Track and manage all your job applications in one place.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {resumeFileName ? (
+              <div className="flex items-center gap-2 bg-green-50 border border-green-200 px-3 py-2 rounded-lg">
+                <CheckCircle2 size={16} className="text-green-600" />
+                <span className="text-sm text-green-700 font-medium">{resumeFileName}</span>
+                <button
+                  onClick={() => { setResumeText(''); setResumeFileName('') }}
+                  className="text-green-500 hover:text-green-700 text-xs ml-1"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : null}
+            <label className="cursor-pointer bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
+              {resumeFileName ? 'Change Resume' : '📄 Upload Resume'}
+              <input
+                type="file"
+                accept=".pdf"
+                onChange={handleResumeUpload}
+                className="hidden"
+              />
+            </label>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -287,6 +374,101 @@ const handleExtractWithAI = async () => {
             <div className="text-2xl font-bold text-red-600">{stats.rejected}</div>
           </div>
         </div>
+
+        {resumeText && (
+          <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-1">🔍 Quick Resume Analyzer</h2>
+            <p className="text-slate-500 text-sm mb-3">Paste any job description to check your ATS match score before applying.</p>
+            <textarea
+              placeholder="Paste job description here..."
+              value={quickJD}
+              onChange={(e) => setQuickJD(e.target.value)}
+              rows={4}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm mb-3"
+            />
+            <button
+              onClick={handleQuickAnalyze}
+              disabled={quickAnalyzing}
+              className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-semibold px-6 py-2.5 rounded-lg transition text-sm"
+            >
+              {quickAnalyzing ? 'Analyzing...' : '🔍 Analyze ATS Match'}
+            </button>
+
+            {quickResult && (
+              <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="font-bold text-slate-900 text-lg">ATS Score:</span>
+                  <span className={`font-bold text-3xl ${quickResult.atsScore >= 70 ? 'text-green-600' : quickResult.atsScore >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                    {quickResult.atsScore}%
+                  </span>
+                  <span className="text-sm text-slate-500">Interview Probability: <strong>{quickResult.interviewProbability}</strong></span>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <h3 className="font-semibold text-green-700 text-sm mb-2">✅ Matched Skills</h3>
+                    <div className="flex flex-wrap gap-1">
+                      {quickResult.matchedSkills?.map((skill, i) => (
+                        <span key={i} className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">{skill}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-red-700 text-sm mb-2">❌ Missing Skills</h3>
+                    <div className="flex flex-wrap gap-1">
+                      {quickResult.missingSkills?.map((skill, i) => (
+                        <span key={i} className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">{skill}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-orange-700 text-sm mb-2">🔑 Missing Keywords</h3>
+                    <div className="flex flex-wrap gap-1">
+                      {quickResult.missingKeywords?.map((kw, i) => (
+                        <span key={i} className="bg-orange-100 text-orange-800 text-xs px-2 py-1 rounded-full">{kw}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-purple-700 text-sm mb-2">📊 Experience Gaps</h3>
+                    <ul className="text-xs text-slate-700 space-y-1">
+                      {quickResult.experienceGaps?.map((gap, i) => (
+  <li key={i}>• {typeof gap === 'object' ? Object.values(gap).join(' → ') : gap}</li>
+))}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <h3 className="font-semibold text-blue-700 text-sm mb-2">💡 Resume Suggestions</h3>
+                  <ul className="text-xs text-slate-700 space-y-1">
+                    {quickResult.resumeSuggestions?.map((s, i) => (
+                      <li key={i}>• {s}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="mb-4">
+                  <h3 className="font-semibold text-slate-700 text-sm mb-2">✍️ Rewritten Bullet Points</h3>
+                  <ul className="text-xs text-slate-700 space-y-1">
+                    {quickResult.rewrittenBullets?.map((b, i) => (
+                      <li key={i} className="bg-white p-2 rounded border border-slate-200">
+                        • {typeof b === 'object' ? (b.rewrittenBullet || b.oldBullet || JSON.stringify(b)) : b}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <button
+                  onClick={() => { setQuickResult(null); setQuickJD('') }}
+                  className="text-slate-400 hover:text-slate-600 text-xs"
+                >
+                  Clear Results
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-1">
@@ -340,12 +522,12 @@ const handleExtractWithAI = async () => {
                   />
                 </div>
                 <button
-        onClick={handleExtractWithAI}
-          disabled={aiLoading}
-      className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white font-semibold py-2.5 rounded-lg transition"
->
-       {aiLoading ? 'Extracting...' : '✨ Extract with AI'}
-         </button>
+                  onClick={handleExtractWithAI}
+                  disabled={aiLoading}
+                  className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white font-semibold py-2.5 rounded-lg transition"
+                >
+                  {aiLoading ? 'Extracting...' : '✨ Extract with AI'}
+                </button>
                 <button
                   onClick={handleAddApplication}
                   className="w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2.5 rounded-lg transition"
@@ -358,19 +540,20 @@ const handleExtractWithAI = async () => {
 
           <div className="lg:col-span-2">
             <div className="bg-white rounded-lg border border-slate-200">
-<div className="px-6 py-4 border-b border-slate-200">
-  <div className="flex justify-between items-center mb-3">
-    <h2 className="text-lg font-semibold text-slate-900">Your Applications</h2>
-    <span className="text-sm text-slate-500">{filtered.length} total</span>
-  </div>
-  <input
-    type="text"
-    placeholder="Search by company..."
-    value={searchTerm}
-    onChange={(e) => setSearchTerm(e.target.value)}
-    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-  />
-</div>              {loading ? (
+              <div className="px-6 py-4 border-b border-slate-200">
+                <div className="flex justify-between items-center mb-3">
+                  <h2 className="text-lg font-semibold text-slate-900">Your Applications</h2>
+                  <span className="text-sm text-slate-500">{filtered.length} total</span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search by company..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                />
+              </div>
+              {loading ? (
                 <div className="p-8 text-center text-slate-500">Loading...</div>
               ) : applications.length === 0 ? (
                 <div className="p-12 text-center">
@@ -380,7 +563,7 @@ const handleExtractWithAI = async () => {
                 </div>
               ) : (
                 <ul className="divide-y divide-slate-200">
-                 {filtered.map((app) => (
+                  {filtered.map((app) => (
                     <li key={app.id} className="p-5 hover:bg-slate-50 transition flex justify-between items-start">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-1">
@@ -410,9 +593,52 @@ const handleExtractWithAI = async () => {
                         </div>
                         <p className="text-slate-600 text-sm">{app.role}</p>
                         <p className="text-slate-400 text-xs mt-1">Added {new Date(app.date_added).toLocaleDateString()}</p>
+                        <button
+                          onClick={() => handleAnalyzeResume(app)}
+                          disabled={analyzing && analyzingId === app.id}
+                          className="mt-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-full transition disabled:bg-indigo-300"
+                        >
+                          {analyzing && analyzingId === app.id ? 'Analyzing...' : '🔍 Analyze Resume'}
+                        </button>
+
+                        {analysisResult && analyzingId === app.id && (
+                          <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="font-bold text-slate-900">ATS Score:</span>
+                              <span className={`font-bold text-lg ${analysisResult.atsScore >= 70 ? 'text-green-600' : analysisResult.atsScore >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                {analysisResult.atsScore}%
+                              </span>
+                              <span className="text-slate-500">Interview: <strong>{analysisResult.interviewProbability}</strong></span>
+                            </div>
+                            <div className="mb-2">
+                              <p className="font-medium text-green-700 mb-1">✅ Matched Skills</p>
+                              <div className="flex flex-wrap gap-1">
+                                {analysisResult.matchedSkills?.map((skill, i) => (
+                                  <span key={i} className="bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full">{skill}</span>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="mb-2">
+                              <p className="font-medium text-red-700 mb-1">❌ Missing Skills</p>
+                              <div className="flex flex-wrap gap-1">
+                                {analysisResult.missingSkills?.map((skill, i) => (
+                                  <span key={i} className="bg-red-100 text-red-800 text-xs px-2 py-0.5 rounded-full">{skill}</span>
+                                ))}
+                              </div>
+                            </div>
+                            <p className="text-slate-700 mb-1"><span className="font-medium">💡 Tip:</span> {analysisResult.resumeSuggestions?.[0]}</p>
+                            <button
+                              onClick={() => { setAnalysisResult(null); setAnalyzingId(null) }}
+                              className="mt-2 text-slate-400 hover:text-slate-600 text-xs"
+                            >
+                              Close
+                            </button>
+                          </div>
+                        )}
+
                         {Math.floor((new Date() - new Date(app.date_added)) / (1000 * 60 * 60 * 24)) >= 7 && app.status === 'Applied' && (
-  <p className="text-amber-600 text-xs mt-1 font-medium">⚠️ No update in {Math.floor((new Date() - new Date(app.date_added)) / (1000 * 60 * 60 * 24))} days. Consider following up.</p>
-)}
+                          <p className="text-amber-600 text-xs mt-1 font-medium">⚠️ No update in {Math.floor((new Date() - new Date(app.date_added)) / (1000 * 60 * 60 * 24))} days. Consider following up.</p>
+                        )}
                         {app.notes && (
                           <p className="text-slate-500 text-sm mt-2 line-clamp-2 bg-slate-50 p-2 rounded">{app.notes}</p>
                         )}
@@ -435,7 +661,7 @@ const handleExtractWithAI = async () => {
 
       <footer className="mt-16 py-6 border-t border-slate-200 bg-white">
         <div className="max-w-7xl mx-auto px-6 text-center text-sm text-slate-500">
-          Built by <span className="text-slate-700 font-medium">[Gopichand Jetti]</span>
+          Built by <span className="text-slate-700 font-medium">Gopichand Jetti</span>
         </div>
       </footer>
     </div>
