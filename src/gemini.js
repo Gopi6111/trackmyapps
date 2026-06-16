@@ -1,11 +1,9 @@
 import Groq from 'groq-sdk'
-import { config } from './config'
 
 const groq = new Groq({ 
-  apiKey: config.groqKey,
+  apiKey: import.meta.env.VITE_GROQ_KEY,
   dangerouslyAllowBrowser: true 
 })
-
 export const extractJobDetails = async (jobDescription) => {
   const completion = await groq.chat.completions.create({
     model: 'llama-3.1-8b-instant',
