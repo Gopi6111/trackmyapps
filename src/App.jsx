@@ -3,8 +3,7 @@
     import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import { Briefcase, LogOut, Plus, Trash2, TrendingUp, CheckCircle2, Clock, XCircle, Target, Zap, BarChart3 } from 'lucide-react'
-import { extractJobDetails, analyzeResume } from "./gemini"
-
+import { extractJobDetails, extractSkills, generateSuggestions } from "./gemini"
 function App() {
   const [session, setSession] = useState(null)
   const [applications, setApplications] = useState([])
@@ -81,19 +80,42 @@ function App() {
   }
 
   const handleQuickAnalyze = async () => {
-    if (!resumeText) return alert('Please upload your resume first')
-    if (!quickJD) return alert('Please paste a job description first')
-    setQuickAnalyzing(true)
-    setQuickResult(null)
-    try {
-      const result = await analyzeResume(resumeText, quickJD)
-      setQuickResult(result)
-    } catch (error) {
-      alert('Analysis failed. Please try again.')
-      console.error(error)
+  if (!resumeText) return alert('Please upload your resume first')
+  if (!quickJD) return alert('Please paste a job description first')
+  
+  setQuickAnalyzing(true)
+  setQuickResult(null)
+  
+  try {
+    // Step 1: AI extracts skills from both (lists only)
+    const resumeSkills = await extractSkills(resumeText, 'resume')
+    const jdSkills = await extractSkills(quickJD, 'job description')
+    
+    // Step 2: JavaScript calculates the match (deterministic math)
+    const matched = jdSkills.filter(skill => resumeSkills.includes(skill))
+    const missing = jdSkills.filter(skill => !resumeSkills.includes(skill))
+    const score = Math.round((matched.length / jdSkills.length) * 100)
+    
+    // Step 3: Build the result
+    let suggestions = []
+    if (missing.length > 0) {
+      suggestions = await generateSuggestions(resumeText, missing)
     }
-    setQuickAnalyzing(false)
+    
+    setQuickResult({
+      atsScore: score,
+      matchedSkills: matched,
+      missingSkills: missing,
+      resumeSuggestions: suggestions,
+      interviewProbability: score >= 70 ? 'High' : score >= 50 ? 'Medium' : 'Low'
+    })
+  } catch (error) {
+    alert('Analysis failed. Please try again.')
+    console.error(error)
   }
+  
+  setQuickAnalyzing(false)
+}
 
   const handleAnalyzeResume = async (app) => {
     if (!resumeText) return alert('Please upload your resume first')
@@ -421,14 +443,7 @@ function App() {
                       ))}
                     </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-orange-700 text-sm mb-2">🔑 Missing Keywords</h3>
-                    <div className="flex flex-wrap gap-1">
-                      {quickResult.missingKeywords?.map((kw, i) => (
-                        <span key={i} className="bg-orange-100 text-orange-800 text-xs px-2 py-1 rounded-full">{kw}</span>
-                      ))}
-                    </div>
-                  </div>
+                    
                   <div>
                     <h3 className="font-semibold text-purple-700 text-sm mb-2">📊 Experience Gaps</h3>
                     <ul className="text-xs text-slate-700 space-y-1">
