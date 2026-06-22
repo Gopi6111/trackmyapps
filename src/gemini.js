@@ -1,6 +1,7 @@
 import Groq from 'groq-sdk'
+
 const groq = new Groq({
-  apiKey: config.groqKey,
+  apiKey: import.meta.env.VITE_GROQ_KEY,
   dangerouslyAllowBrowser: true,
 })
 export const extractJobDetails = async (jobDescription) => {
