@@ -1,6 +1,4 @@
 import Groq from 'groq-sdk'
-import { config } from './config'
-
 const groq = new Groq({
   apiKey: config.groqKey,
   dangerouslyAllowBrowser: true,
