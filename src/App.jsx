@@ -3,7 +3,7 @@
     import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import { Briefcase, LogOut, Plus, Trash2, TrendingUp, CheckCircle2, Clock, XCircle, Target, Zap, BarChart3 } from 'lucide-react'
-import { extractJobDetails, extractSkills, generateSuggestions } from "./gemini"
+import { extractJobDetails, analyzeResumeVsJD } from "./gemini"
 function App() {
   const [session, setSession] = useState(null)
   const [applications, setApplications] = useState([])
@@ -87,36 +87,35 @@ function App() {
   setQuickResult(null)
   
   try {
-    // Step 1: AI extracts skills from both (lists only)
-    const resumeSkills = await extractSkills(resumeText, 'resume')
-    const jdSkills = await extractSkills(quickJD, 'job description')
+    const data = await analyzeResumeVsJD(resumeText, quickJD)
     
-    // Step 2: JavaScript calculates the match (deterministic math)
-    const matched = jdSkills.filter(skill => resumeSkills.includes(skill))
-    const missing = jdSkills.filter(skill => !resumeSkills.includes(skill))
-    const score = Math.round((matched.length / jdSkills.length) * 100)
-    
-    // Step 3: Build the result
-    let suggestions = []
-    if (missing.length > 0) {
-      suggestions = await generateSuggestions(resumeText, missing)
-    }
+    // Deterministic scoring in JavaScript
+    const matched = data.jdSkills.filter(skill => data.resumeSkills.includes(skill))
+    const missing = data.jdSkills.filter(skill => !data.resumeSkills.includes(skill))
+    const score = data.jdSkills.length > 0 
+      ? Math.round((matched.length / data.jdSkills.length) * 100) 
+      : 0
     
     setQuickResult({
       atsScore: score,
       matchedSkills: matched,
       missingSkills: missing,
-      resumeSuggestions: suggestions,
+      experienceGaps: data.experienceGaps || [],
+      rewrittenBullets: data.rewrittenBullets || [],
+      resumeSuggestions: data.suggestions || [],
       interviewProbability: score >= 70 ? 'High' : score >= 50 ? 'Medium' : 'Low'
     })
   } catch (error) {
-    alert('Analysis failed. Please try again.')
+    if (error.message && error.message.includes('rate_limit')) {
+      alert('Too many requests. Please wait 30 seconds and try again.')
+    } else {
+      alert('Analysis failed. Please try again.')
+    }
     console.error(error)
   }
   
   setQuickAnalyzing(false)
 }
-
   const handleAnalyzeResume = async (app) => {
     if (!resumeText) return alert('Please upload your resume first')
     if (!app.notes) return alert('Please add a job description in the notes field first')
@@ -195,119 +194,192 @@ function App() {
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
-        <nav className="bg-white border-b border-slate-200">
-          <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+      <div className="min-h-screen bg-white">
+        {/* Navbar */}
+        <nav className="border-b border-slate-200 sticky top-0 bg-white/80 backdrop-blur z-50">
+          <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <Briefcase className="text-blue-700" size={28} />
+              <Briefcase className="text-blue-700" size={26} />
               <span className="text-xl font-bold text-slate-900">TrackMyApps</span>
             </div>
+            <button
+              onClick={() => { setAuthMode('login'); document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' }) }}
+              className="text-sm font-medium text-slate-700 hover:text-slate-900"
+            >
+              Sign In
+            </button>
           </div>
         </nav>
 
-        <div className="max-w-7xl mx-auto px-6 py-16 grid md:grid-cols-2 gap-12 items-center">
-          <div>
-            <h1 className="text-5xl font-bold text-slate-900 leading-tight mb-6">
-              Land your dream job, <span className="text-blue-700">organized.</span>
-            </h1>
-            <p className="text-lg text-slate-600 mb-8 leading-relaxed">
-              A focused dashboard to manage every application, interview, and offer, all in one place. Built for serious job seekers.
-            </p>
-            <div className="flex gap-3 flex-wrap">
-              <div className="flex items-center gap-2 text-sm text-slate-700">
-                <CheckCircle2 size={18} className="text-green-600" />
-                <span>Free to use</span>
+        {/* Hero */}
+        <section className="max-w-6xl mx-auto px-6 pt-20 pb-16 text-center">
+          <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 text-sm font-medium px-4 py-1.5 rounded-full mb-6">
+            <Zap size={14} /> AI-Powered Job Search
+          </div>
+          <h1 className="text-5xl md:text-6xl font-bold text-slate-900 leading-tight mb-6">
+            Track applications.<br />
+            <span className="text-blue-700">Beat the ATS.</span> Land the job.
+          </h1>
+          <p className="text-lg text-slate-600 max-w-2xl mx-auto mb-8">
+            Upload your resume, paste any job description, and instantly see your ATS match score, missing skills, and AI-powered suggestions. All while tracking every application in one place.
+          </p>
+          <button
+            onClick={() => { setAuthMode('signup'); document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' }) }}
+            className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-8 py-3.5 rounded-lg transition text-lg"
+          >
+            Get Started Free
+          </button>
+          <p className="text-sm text-slate-400 mt-3">No credit card required</p>
+        </section>
+<section className="max-w-5xl mx-auto px-6 pb-16">
+  <img
+    src="/app-preview.png"
+    alt="TrackMyApps dashboard preview"
+    className="rounded-2xl shadow-2xl border border-slate-200 w-full"
+  />
+</section>
+        {/* Feature Preview */}
+        <section className="max-w-5xl mx-auto px-6 pb-20">
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-8 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-semibold text-slate-900">ATS Match Analysis</h3>
+              <span className="bg-green-100 text-green-700 text-sm font-bold px-3 py-1 rounded-full">78% Match</span>
+            </div>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="bg-white rounded-lg p-4 border border-slate-200">
+                <p className="text-sm font-semibold text-green-700 mb-2">✅ Matched Skills</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {['React', 'Node.js', 'AWS', 'Python'].map(s => (
+                    <span key={s} className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">{s}</span>
+                  ))}
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-sm text-slate-700">
-                <CheckCircle2 size={18} className="text-green-600" />
-                <span>Private & secure</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-slate-700">
-                <CheckCircle2 size={18} className="text-green-600" />
-                <span>AI powered</span>
+              <div className="bg-white rounded-lg p-4 border border-slate-200">
+                <p className="text-sm font-semibold text-red-700 mb-2">❌ Missing Skills</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {['Docker', 'Kubernetes'].map(s => (
+                    <span key={s} className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">{s}</span>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
+        </section>
 
-          <div className="bg-white rounded-xl shadow-xl border border-slate-200 p-8">
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">
-              {authMode === 'login' ? 'Welcome back' : 'Get started free'}
-            </h2>
-            <p className="text-slate-600 mb-6">
-              {authMode === 'login' ? 'Log in to your dashboard' : 'Create your account in seconds'}
-            </p>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  placeholder="you@example.com"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                />
+        {/* Features */}
+        <section className="bg-slate-50 border-y border-slate-200 py-20">
+          <div className="max-w-6xl mx-auto px-6">
+            <h2 className="text-3xl font-bold text-slate-900 text-center mb-3">Everything you need to land your next role</h2>
+            <p className="text-slate-600 text-center mb-14 max-w-2xl mx-auto">Built for serious job seekers who want to stay organized and beat applicant tracking systems.</p>
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="bg-white p-6 rounded-xl border border-slate-200">
+                <div className="w-11 h-11 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                  <BarChart3 className="text-blue-700" size={22} />
+                </div>
+                <h3 className="font-semibold text-slate-900 mb-2">ATS Score Analysis</h3>
+                <p className="text-slate-600 text-sm">Get a precise, consistent match score between your resume and any job description.</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
-                <input
-                  type="password"
-                  placeholder="At least 6 characters"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                />
+              <div className="bg-white p-6 rounded-xl border border-slate-200">
+                <div className="w-11 h-11 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                  <Target className="text-green-700" size={22} />
+                </div>
+                <h3 className="font-semibold text-slate-900 mb-2">Track Applications</h3>
+                <p className="text-slate-600 text-sm">Manage every application, interview, and offer in one organized dashboard.</p>
               </div>
-              <button
-                onClick={handleAuth}
-                className="w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2.5 rounded-lg transition"
-              >
-                {authMode === 'login' ? 'Log In' : 'Create Account'}
-              </button>
-              <button
-                onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
-                className="w-full text-blue-700 hover:underline text-sm"
-              >
-                {authMode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
-              </button>
+              <div className="bg-white p-6 rounded-xl border border-slate-200">
+                <div className="w-11 h-11 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                  <Zap className="text-purple-700" size={22} />
+                </div>
+                <h3 className="font-semibold text-slate-900 mb-2">AI Extraction</h3>
+                <p className="text-slate-600 text-sm">Paste a job description and AI auto-fills company, role, and key details.</p>
+              </div>
+              <div className="bg-white p-6 rounded-xl border border-slate-200">
+                <div className="w-11 h-11 bg-amber-100 rounded-lg flex items-center justify-center mb-4">
+                  <CheckCircle2 className="text-amber-700" size={22} />
+                </div>
+                <h3 className="font-semibold text-slate-900 mb-2">Smart Suggestions</h3>
+                <p className="text-slate-600 text-sm">Get AI-powered resume bullet points tailored to each job's requirements.</p>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
-        <div className="bg-white border-t border-slate-200 py-16">
-          <div className="max-w-7xl mx-auto px-6">
-            <h2 className="text-3xl font-bold text-slate-900 text-center mb-3">Why TrackMyApps?</h2>
-            <p className="text-slate-600 text-center mb-12 max-w-2xl mx-auto">
-              Built by a job seeker, for job seekers. Every feature is designed to save you time.
-            </p>
+        {/* How It Works */}
+        <section className="py-20">
+          <div className="max-w-5xl mx-auto px-6">
+            <h2 className="text-3xl font-bold text-slate-900 text-center mb-14">How it works</h2>
             <div className="grid md:grid-cols-3 gap-8">
               <div className="text-center">
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                  <Target className="text-blue-700" size={24} />
-                </div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">Stay Organized</h3>
-                <p className="text-slate-600 text-sm">Track every application in one place. No more forgotten follow-ups.</p>
+                <div className="w-12 h-12 bg-blue-700 text-white rounded-full flex items-center justify-center mx-auto mb-4 font-bold text-lg">1</div>
+                <h3 className="font-semibold text-slate-900 mb-2">Upload your resume</h3>
+                <p className="text-slate-600 text-sm">Upload your resume PDF once. We extract the text automatically.</p>
               </div>
               <div className="text-center">
-                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                  <BarChart3 className="text-green-700" size={24} />
-                </div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">See Your Progress</h3>
-                <p className="text-slate-600 text-sm">Visual stats show your interviews, offers, and application count.</p>
+                <div className="w-12 h-12 bg-blue-700 text-white rounded-full flex items-center justify-center mx-auto mb-4 font-bold text-lg">2</div>
+                <h3 className="font-semibold text-slate-900 mb-2">Paste a job description</h3>
+                <p className="text-slate-600 text-sm">Copy any job posting and paste it into the analyzer.</p>
               </div>
               <div className="text-center">
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                  <Zap className="text-purple-700" size={24} />
-                </div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">AI Resume Analyzer</h3>
-                <p className="text-slate-600 text-sm">Upload your resume and get ATS match score, missing skills, and suggestions instantly.</p>
+                <div className="w-12 h-12 bg-blue-700 text-white rounded-full flex items-center justify-center mx-auto mb-4 font-bold text-lg">3</div>
+                <h3 className="font-semibold text-slate-900 mb-2">Get your ATS score</h3>
+                <p className="text-slate-600 text-sm">See your match score, missing skills, and improvement tips instantly.</p>
               </div>
             </div>
           </div>
-        </div>
+        </section>
 
+        {/* Auth Section */}
+        <section id="auth-section" className="bg-slate-50 border-t border-slate-200 py-20">
+          <div className="max-w-md mx-auto px-6">
+            <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-8">
+              <h2 className="text-2xl font-bold text-slate-900 mb-2 text-center">
+                {authMode === 'login' ? 'Welcome back' : 'Get started free'}
+              </h2>
+              <p className="text-slate-600 mb-6 text-center">
+                {authMode === 'login' ? 'Log in to your dashboard' : 'Create your account in seconds'}
+              </p>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                  <input
+                    type="password"
+                    placeholder="At least 6 characters"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <button
+                  onClick={handleAuth}
+                  className="w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2.5 rounded-lg transition"
+                >
+                  {authMode === 'login' ? 'Log In' : 'Create Account'}
+                </button>
+                <button
+                  onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
+                  className="w-full text-blue-700 hover:underline text-sm"
+                >
+                  {authMode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Footer */}
         <footer className="bg-slate-900 text-slate-400 py-8">
-          <div className="max-w-7xl mx-auto px-6 text-center">
-            <p className="text-sm">Built by <span className="text-white font-medium">Gopichand Jetti</span></p>
+          <div className="max-w-6xl mx-auto px-6 text-center text-sm">
+            Built by <span className="text-white font-medium">Gopichand Jetti</span>
           </div>
         </footer>
       </div>
@@ -608,13 +680,7 @@ function App() {
                         </div>
                         <p className="text-slate-600 text-sm">{app.role}</p>
                         <p className="text-slate-400 text-xs mt-1">Added {new Date(app.date_added).toLocaleDateString()}</p>
-                        <button
-                          onClick={() => handleAnalyzeResume(app)}
-                          disabled={analyzing && analyzingId === app.id}
-                          className="mt-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-full transition disabled:bg-indigo-300"
-                        >
-                          {analyzing && analyzingId === app.id ? 'Analyzing...' : '🔍 Analyze Resume'}
-                        </button>
+                        
 
                         {analysisResult && analyzingId === app.id && (
                           <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs">

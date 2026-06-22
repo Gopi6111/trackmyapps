@@ -1,6 +1,5 @@
 import Groq from 'groq-sdk'
 import { config } from './config'
-import e from 'cors'
 
 const groq = new Groq({
   apiKey: config.groqKey,
@@ -19,64 +18,52 @@ messages: [
     max_tokens: 200
   })
 
-  const text = completion.choices[0].message.content.trim()
-  const clean = text.replace(/```json|```/g, '').trim()
-  return JSON.parse(clean)
-}
-export const extractSkills = async (text, type) => {
-  const completion = await groq.chat.completions.create({
-    model: 'llama-3.1-8b-instant',
-    temperature: 0,
-    messages: [
-      {
-        role: 'user',
-        content: `Extract all technical skills, technologies, programming languages, frameworks, databases, and tools from this ${type}. Return ONLY a JSON array of lowercase strings, nothing else. Example: ["react", "node.js", "python", "aws"]. ${type}: ${text.slice(0, 2500)}`
-      }
-    ],
-    max_tokens: 400
-  })
-
-  let result = completion.choices[0].message.content.trim()
-  result = result.replace(/```json|```/g, '').trim()
-  
-  // Find the JSON array within the response
-  const start = result.indexOf('[')
-  const end = result.lastIndexOf(']')
-  
-  if (start === -1 || end === -1) {
-    return []
-  }
-  
-  const jsonString = result.slice(start, end + 1)
-  
+  let text = completion.choices[0].message.content.trim()
+  text = text.replace(/```json|```/g, '').trim()
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start === -1 || end === -1) return { company: '', role: '', requirements: '' }
   try {
-    return JSON.parse(jsonString)
-  } catch (error) {
-    console.error('Failed to parse skills:', error)
-    return []
+    return JSON.parse(text.slice(start, end + 1))
+  } catch {
+    return { company: '', role: '', requirements: '' }
   }
 }
-export const generateSuggestions = async (resumeText, missingSkills) => {
+export const analyzeResumeVsJD = async (resumeText, jobDescription) => {
   const completion = await groq.chat.completions.create({
     model: 'llama-3.1-8b-instant',
     temperature: 0,
     messages: [
       {
         role: 'user',
-        content: `A job seeker is missing these skills: ${missingSkills.join(', ')}. Write 3 professional resume bullet points they could add if they have experience with these skills. Each should start with an action verb. Return ONLY a JSON array of 3 strings. Example: ["Developed scalable APIs using Node.js", "Deployed applications on AWS using Docker"]`
+        content: `You are an ATS expert. Compare this resume against the job description. Return ONLY a valid JSON object with these exact keys, no markdown, no extra text:
+{
+  "resumeSkills": ["list", "of", "skills", "in", "resume"],
+  "jdSkills": ["list", "of", "skills", "required", "by", "job"],
+  "experienceGaps": ["specific gap 1", "specific gap 2"],
+  "rewrittenBullets": ["improved bullet 1", "improved bullet 2", "improved bullet 3"],
+  "suggestions": ["actionable tip 1", "actionable tip 2"]
+}
+All skills must be lowercase. experienceGaps should describe missing experience or qualifications. rewrittenBullets should be stronger ATS-friendly versions of resume bullets. 
+
+Resume: ${resumeText.slice(0, 2000)}
+
+Job Description: ${jobDescription.slice(0, 1200)}`
       }
     ],
-    max_tokens: 400
+    max_tokens: 900
   })
 
   let result = completion.choices[0].message.content.trim()
   result = result.replace(/```json|```/g, '').trim()
-  const start = result.indexOf('[')
-  const end = result.lastIndexOf(']')
-  if (start === -1 || end === -1) return []
+  const start = result.indexOf('{')
+  const end = result.lastIndexOf('}')
+  if (start === -1 || end === -1) {
+    return { resumeSkills: [], jdSkills: [], experienceGaps: [], rewrittenBullets: [], suggestions: [] }
+  }
   try {
     return JSON.parse(result.slice(start, end + 1))
   } catch {
-    return []
+    return { resumeSkills: [], jdSkills: [], experienceGaps: [], rewrittenBullets: [], suggestions: [] }
   }
 }
