@@ -89,20 +89,25 @@ function App() {
   try {
     const data = await analyzeResumeVsJD(resumeText, quickJD)
     
-    // Deterministic scoring in JavaScript
-    const matched = data.jdSkills.filter(skill => data.resumeSkills.includes(skill))
-    const missing = data.jdSkills.filter(skill => !data.resumeSkills.includes(skill))
-    const score = data.jdSkills.length > 0 
-      ? Math.round((matched.length / data.jdSkills.length) * 100) 
-      : 0
+    // Your weighted formula - deterministic math
+    const score = Math.round(
+      0.4 * data.skill_match +
+      0.3 * data.concept_match +
+      0.2 * data.experience_match +
+      0.1 * data.tools_match
+    )
     
     setQuickResult({
       atsScore: score,
-      matchedSkills: matched,
-      missingSkills: missing,
-      experienceGaps: data.experienceGaps || [],
-      rewrittenBullets: data.rewrittenBullets || [],
-      resumeSuggestions: data.suggestions || [],
+      skillMatch: data.skill_match,
+      conceptMatch: data.concept_match,
+      experienceMatch: data.experience_match,
+      toolsMatch: data.tools_match,
+      matchedSkills: data.matched_skills || [],
+      missingSkills: data.missing_skills || [],
+      experienceSummary: data.experience_summary || '',
+      resumeSuggestions: data.improvement_suggestions || [],
+      rewrittenBullets: data.rewritten_bullets || [],
       interviewProbability: score >= 70 ? 'High' : score >= 50 ? 'Medium' : 'Low'
     })
   } catch (error) {
@@ -116,20 +121,6 @@ function App() {
   
   setQuickAnalyzing(false)
 }
-  const handleAnalyzeResume = async (app) => {
-    if (!resumeText) return alert('Please upload your resume first')
-    if (!app.notes) return alert('Please add a job description in the notes field first')
-    setAnalyzing(true)
-    setAnalyzingId(app.id)
-    try {
-      const result = await analyzeResume(resumeText, app.notes)
-      setAnalysisResult(result)
-    } catch (error) {
-      alert('Analysis failed. Please try again.')
-      console.error(error)
-    }
-    setAnalyzing(false)
-  }
 
   const handleExtractWithAI = async () => {
     if (!notes) return alert('Please paste a job description in the notes field first')

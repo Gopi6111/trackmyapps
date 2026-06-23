@@ -30,27 +30,32 @@ messages: [
 }
 export const analyzeResumeVsJD = async (resumeText, jobDescription) => {
   const completion = await groq.chat.completions.create({
-    model: 'llama-3.1-8b-instant',
+    model: 'llama-3.3-70b-versatile',
     temperature: 0,
     messages: [
       {
         role: 'user',
-        content: `You are an ATS expert. Compare this resume against the job description. Return ONLY a valid JSON object with these exact keys, no markdown, no extra text:
+        content: `You are an ATS evaluator. Analyze the resume against the job description using semantic understanding (match related concepts, not just exact words). Score each component from 0 to 100.
+
+Return ONLY valid JSON, no markdown:
 {
-  "resumeSkills": ["list", "of", "skills", "in", "resume"],
-  "jdSkills": ["list", "of", "skills", "required", "by", "job"],
-  "experienceGaps": ["specific gap 1", "specific gap 2"],
-  "rewrittenBullets": ["improved bullet 1", "improved bullet 2", "improved bullet 3"],
-  "suggestions": ["actionable tip 1", "actionable tip 2"]
+  "skill_match": <0-100: how well hard skills match>,
+  "concept_match": <0-100: how well related concepts/domains match semantically>,
+  "experience_match": <0-100: does experience level meet requirements>,
+  "tools_match": <0-100: how well specific tools/technologies match>,
+  "matched_skills": ["skills found in both"],
+  "missing_skills": ["important skills missing"],
+  "experience_summary": "brief note on years of experience vs required",
+  "improvement_suggestions": ["2-3 tips"],
+  "rewritten_bullets": ["3 improved resume bullets"]
 }
-All skills must be lowercase. experienceGaps should describe missing experience or qualifications. rewrittenBullets should be stronger ATS-friendly versions of resume bullets. 
 
-Resume: ${resumeText.slice(0, 2000)}
+Resume: ${resumeText.slice(0, 3000)}
 
-Job Description: ${jobDescription.slice(0, 1200)}`
+Job Description: ${jobDescription.slice(0, 1500)}`
       }
     ],
-    max_tokens: 900
+    max_tokens: 1500
   })
 
   let result = completion.choices[0].message.content.trim()
@@ -58,11 +63,11 @@ Job Description: ${jobDescription.slice(0, 1200)}`
   const start = result.indexOf('{')
   const end = result.lastIndexOf('}')
   if (start === -1 || end === -1) {
-    return { resumeSkills: [], jdSkills: [], experienceGaps: [], rewrittenBullets: [], suggestions: [] }
+    return { skill_match: 0, concept_match: 0, experience_match: 0, tools_match: 0, matched_skills: [], missing_skills: [], experience_summary: '', improvement_suggestions: [], rewritten_bullets: [] }
   }
   try {
     return JSON.parse(result.slice(start, end + 1))
   } catch {
-    return { resumeSkills: [], jdSkills: [], experienceGaps: [], rewrittenBullets: [], suggestions: [] }
+    return { skill_match: 0, concept_match: 0, experience_match: 0, tools_match: 0, matched_skills: [], missing_skills: [], experience_summary: '', improvement_suggestions: [], rewritten_bullets: [] }
   }
 }
